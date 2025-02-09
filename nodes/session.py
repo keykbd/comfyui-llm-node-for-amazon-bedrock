@@ -1,6 +1,7 @@
 import requests
 from retry import retry
 import boto3
+from botocore.config import Config
 
 
 MAX_RETRY = 3
@@ -12,23 +13,20 @@ def get_client(service_name, clients={}):
         return clients[service_name]
 
     try:
-        clients[service_name] = boto3.client(service_name=service_name)
+        # ECS タスク実行ロールを使用するための設定
+        config = Config(
+            retries = dict(
+                max_attempts = 3
+            )
+        )
+        
+        # コンテナの認証情報を自動的に取得
+        clients[service_name] = boto3.client(
+            service_name=service_name,
+            config=config
+        )
+        return clients[service_name]
+    
     except Exception as e:
-        # get region from gateway
-        response = requests.put(
-            "http://169.254.169.254/latest/api/token",
-            headers={
-                "X-aws-ec2-metadata-token-ttl-seconds": "21600",
-            },
-        )
-        token = response.text
-        response = requests.get(
-            "http://169.254.169.254/latest/meta-data/placement/region",
-            headers={
-                "X-aws-ec2-metadata-token": token,
-            },
-        )
-        boto3.setup_default_session(region_name=response.text)
-        print("Automatically set region to", response.text)
-        clients[service_name] = boto3.client(service_name=service_name)
-    return clients[service_name]
+        print(f"クライアントの初期化エラー: {str(e)}")
+        raise e
